@@ -83,27 +83,27 @@ func TestRawFullPipelineInfo(t *testing.T) {
 		pachctl garbage-collect
 	`).Run())
 	require.NoError(t, tu.BashCmd(`
-		pachctl create repo data
-		pachctl put file data@master:/file <<<"This is a test"
+		pachctl create repo trfpi-data
+		pachctl put file trfpi-data@master:/file <<<"This is a test"
 		pachctl create pipeline <<EOF
 			{
 			  "pipeline": {"name": "{{.pipeline}}"},
 			  "input": {
 			    "pfs": {
 			      "glob": "/*",
-			      "repo": "data"
+			      "repo": "trfpi-data"
 			    }
 			  },
 			  "transform": {
 			    "cmd": ["bash"],
-			    "stdin": ["cp /pfs/data/file /pfs/out"]
+			    "stdin": ["cp /pfs/trfpi-data/file /pfs/out"]
 			  }
 			}
 		EOF
 		`,
 		"pipeline", tu.UniqueString("p-")).Run())
 	require.NoError(t, tu.BashCmd(`
-		pachctl flush commit data@master
+		pachctl flush commit trfpi-data@master
 
 		# make sure the results have the full pipeline info, including version
 		pachctl list job --raw --history=all \
@@ -119,53 +119,53 @@ func TestRawFullPipelineInfo(t *testing.T) {
 func TestJSONMultiplePipelines(t *testing.T) {
 	require.NoError(t, tu.BashCmd(`
 		yes | pachctl delete all
-		pachctl create repo input
+		pachctl create repo tjmp-input
 		pachctl create pipeline -f - <<EOF
 		{
 		  "pipeline": {
-		    "name": "first"
+		    "name": "tjmp-first"
 		  },
 		  "input": {
 		    "pfs": {
 		      "glob": "/*",
-		      "repo": "input"
+		      "repo": "tjmp-input"
 		    }
 		  },
 		  "transform": {
 		    "cmd": [ "/bin/bash" ],
 		    "stdin": [
-		      "cp /pfs/input/* /pfs/out"
+		      "cp /pfs/tjmp-input/* /pfs/out"
 		    ]
 		  }
 		}
 		{
 		  "pipeline": {
-		    "name": "second"
+		    "name": "tjmp-second"
 		  },
 		  "input": {
 		    "pfs": {
 		      "glob": "/*",
-		      "repo": "first"
+		      "repo": "tjmp-first"
 		    }
 		  },
 		  "transform": {
 		    "cmd": [ "/bin/bash" ],
 		    "stdin": [
-		      "cp /pfs/first/* /pfs/out"
+		      "cp /pfs/tjmp-first/* /pfs/out"
 		    ]
 		  }
 		}
 		EOF
 
-		pachctl start commit input@master
-		echo foo | pachctl put file input@master:/foo
-		echo bar | pachctl put file input@master:/bar
-		echo baz | pachctl put file input@master:/baz
-		pachctl finish commit input@master
-		pachctl flush commit input@master
-		pachctl get file second@master:/foo | match foo
-		pachctl get file second@master:/bar | match bar
-		pachctl get file second@master:/baz | match baz
+		pachctl start commit tjmp-input@master
+		echo foo | pachctl put file tjmp-input@master:/foo
+		echo bar | pachctl put file tjmp-input@master:/bar
+		echo baz | pachctl put file tjmp-input@master:/baz
+		pachctl finish commit tjmp-input@master
+		pachctl flush commit tjmp-input@master
+		pachctl get file tjmp-second@master:/foo | match foo
+		pachctl get file tjmp-second@master:/bar | match bar
+		pachctl get file tjmp-second@master:/baz | match baz
 		`,
 	).Run())
 	require.NoError(t, tu.BashCmd(`pachctl list pipeline`).Run())
@@ -177,16 +177,16 @@ func TestJSONMultiplePipelines(t *testing.T) {
 func TestJSONStringifiedNumbers(t *testing.T) {
 	require.NoError(t, tu.BashCmd(`
 		yes | pachctl delete all
-		pachctl create repo input
+		pachctl create repo tjsn-input
 		pachctl create pipeline -f - <<EOF
 		{
 		  "pipeline": {
-		    "name": "first"
+		    "name": "tjsn-first"
 		  },
 		  "input": {
 		    "pfs": {
 		      "glob": "/*",
-		      "repo": "input"
+		      "repo": "tjsn-input"
 		    }
 		  },
 			"parallelism_spec": {
@@ -195,21 +195,21 @@ func TestJSONStringifiedNumbers(t *testing.T) {
 		  "transform": {
 		    "cmd": [ "/bin/bash" ],
 		    "stdin": [
-		      "cp /pfs/input/* /pfs/out"
+		      "cp /pfs/tjsn-input/* /pfs/out"
 		    ]
 		  }
 		}
 		EOF
 
-		pachctl start commit input@master
-		echo foo | pachctl put file input@master:/foo
-		echo bar | pachctl put file input@master:/bar
-		echo baz | pachctl put file input@master:/baz
-		pachctl finish commit input@master
-		pachctl flush commit input@master
-		pachctl get file first@master:/foo | match foo
-		pachctl get file first@master:/bar | match bar
-		pachctl get file first@master:/baz | match baz
+		pachctl start commit tjsn-input@master
+		echo foo | pachctl put file tjsn-input@master:/foo
+		echo bar | pachctl put file tjsn-input@master:/bar
+		echo baz | pachctl put file tjsn-input@master:/baz
+		pachctl finish commit tjsn-input@master
+		pachctl flush commit tjsn-input@master
+		pachctl get file tjsn-first@master:/foo | match foo
+		pachctl get file tjsn-first@master:/bar | match bar
+		pachctl get file tjsn-first@master:/baz | match baz
 		`,
 	).Run())
 	require.NoError(t, tu.BashCmd(`pachctl list pipeline`).Run())
@@ -223,39 +223,39 @@ func TestJSONMultiplePipelinesError(t *testing.T) {
 	// pipeline spec has no quotes around "name" in first pipeline
 	require.NoError(t, tu.BashCmd(`
 		yes | pachctl delete all
-		pachctl create repo input
+		pachctl create repo tjmpe-input
 		( pachctl create pipeline -f - 2>&1 <<EOF || true
 		{
 		  "pipeline": {
-		    name: "first"
+		    name: "tjmpe-first"
 		  },
 		  "input": {
 		    "pfs": {
 		      "glob": "/*",
-		      "repo": "input"
+		      "repo": "tjmpe-input"
 		    }
 		  },
 		  "transform": {
 		    "cmd": [ "/bin/bash" ],
 		    "stdin": [
-		      "cp /pfs/input/* /pfs/out"
+		      "cp /pfs/tjmpe-input/* /pfs/out"
 		    ]
 		  }
 		}
 		{
 		  "pipeline": {
-		    "name": "second"
+		    "name": "tjmpe-second"
 		  },
 		  "input": {
 		    "pfs": {
 		      "glob": "/*",
-		      "repo": "first"
+		      "repo": "tjmpe-first"
 		    }
 		  },
 		  "transform": {
 		    "cmd": [ "/bin/bash" ],
 		    "stdin": [
-		      "cp /pfs/first/* /pfs/out"
+		      "cp /pfs/tjmpe-first/* /pfs/out"
 		    ]
 		  }
 		}
@@ -271,39 +271,39 @@ func TestYAMLPipelineSpec(t *testing.T) {
 	// wouldn't parse otherwise)
 	require.NoError(t, tu.BashCmd(`
 		yes | pachctl delete all
-		pachctl create repo input
+		pachctl create repo typs-input
 		pachctl create pipeline -f - <<EOF
 		pipeline:
-		  name: first
+		  name: typs-first
 		input:
 		  pfs:
 		    glob: /*
-		    repo: input
+		    repo: typs-input
 		transform:
 		  cmd: [ /bin/bash ]
 		  stdin:
-		    - "cp /pfs/input/* /pfs/out"
+		    - "cp /pfs/typs-input/* /pfs/out"
 		---
 		pipeline:
-		  name: second
+		  name: typs-second
 		input:
 		  pfs:
 		    glob: /*
-		    repo: first
+		    repo: typs-first
 		transform:
 		  cmd: [ /bin/bash ]
 		  stdin:
-		    - "cp /pfs/first/* /pfs/out"
+		    - "cp /pfs/typs-first/* /pfs/out"
 		EOF
-		pachctl start commit input@master
-		echo foo | pachctl put file input@master:/foo
-		echo bar | pachctl put file input@master:/bar
-		echo baz | pachctl put file input@master:/baz
-		pachctl finish commit input@master
-		pachctl flush commit input@master
-		pachctl get file second@master:/foo | match foo
-		pachctl get file second@master:/bar | match bar
-		pachctl get file second@master:/baz | match baz
+		pachctl start commit typs-input@master
+		echo foo | pachctl put file typs-input@master:/foo
+		echo bar | pachctl put file typs-input@master:/bar
+		echo baz | pachctl put file typs-input@master:/baz
+		pachctl finish commit typs-input@master
+		pachctl flush commit typs-input@master
+		pachctl get file typs-second@master:/foo | match foo
+		pachctl get file typs-second@master:/bar | match bar
+		pachctl get file typs-second@master:/baz | match baz
 		`,
 	).Run())
 }
@@ -321,18 +321,18 @@ func TestYAMLError(t *testing.T) {
 	// "cmd" should be a list, instead of a string
 	require.NoError(t, tu.BashCmd(`
 		yes | pachctl delete all
-		pachctl create repo input
+		pachctl create repo tye-input
 		( pachctl create pipeline -f - 2>&1 <<EOF || true
 		pipeline:
-		  name: first
+		  name: tye-first
 		input:
 		  pfs:
 		    glob: /*
-		    repo: input
+		    repo: tye-input
 		transform:
 		  cmd: /bin/bash # should be list, instead of string
 		  stdin:
-		    - "cp /pfs/input/* /pfs/out"
+		    - "cp /pfs/tye-input/* /pfs/out"
 		EOF
 		) | match "cannot unmarshal string into Go value of type \[\]json.RawMessage"
 		`,
@@ -342,14 +342,14 @@ func TestYAMLError(t *testing.T) {
 func TestTFJobBasic(t *testing.T) {
 	require.NoError(t, tu.BashCmd(`
 		yes | pachctl delete all
-		pachctl create repo input
+		pachctl create repo ttjb-input
 		( pachctl create pipeline -f - 2>&1 <<EOF || true
 		pipeline:
-		  name: first
+		  name: ttjb-first
 		input:
 		  pfs:
 		    glob: /*
-		    repo: input
+		    repo: ttjb-input
 		tf_job:
 		  apiVersion: kubeflow.org/v1
 		  kind: TFJob
@@ -404,15 +404,15 @@ func TestYAMLSecret(t *testing.T) {
 		kubectl delete secrets/test-yaml-secret || true
 		kubectl create secret generic test-yaml-secret --from-literal=my-key=my-value
 
-		pachctl create repo input
-		pachctl put file input@master:/foo <<<"foo"
+		pachctl create repo tys-input
+		pachctl put file tys-input@master:/foo <<<"foo"
 		pachctl create pipeline -f - <<EOF
 		  pipeline:
-		    name: pipeline
+		    name: tys-pipeline
 		  input:
 		    pfs:
 		      glob: /*
-		      repo: input
+		      repo: tys-input
 		  transform:
 		    cmd: [ /bin/bash ]
 		    stdin:
@@ -422,8 +422,8 @@ func TestYAMLSecret(t *testing.T) {
 		        env_var: MY_SECRET
 		        key: my-key
 		EOF
-		pachctl flush commit input@master
-		pachctl get file pipeline@master:/vars | match MY_SECRET=my-value
+		pachctl flush commit tys-input@master
+		pachctl get file tys-pipeline@master:/vars | match MY_SECRET=my-value
 		`,
 	).Run())
 }
@@ -439,18 +439,18 @@ func TestYAMLTimestamp(t *testing.T) {
 		# If the pipeline comes up without error, then the YAML parsed
 		pachctl create pipeline -f - <<EOF
 		  pipeline:
-		    name: pipeline
+		    name: tyt-pipeline
 		  input:
 		    cron:
-		      name: in
+		      name: tyt-in
 		      start: "2019-10-10T22:30:05Z"
 		      spec: "@yearly"
 		  transform:
 		    cmd: [ /bin/bash ]
 		    stdin:
-		      - "cp /pfs/in/* /pfs/out"
+		      - "cp /pfs/tyt-in/* /pfs/out"
 		EOF
-		pachctl list pipeline | match 'pipeline'
+		pachctl list pipeline | match 'tyt-pipeline'
 		`,
 	).Run())
 }
@@ -460,26 +460,26 @@ func TestEditPipeline(t *testing.T) {
 		yes | pachctl delete all
 	`).Run())
 	require.NoError(t, tu.BashCmd(`
-		pachctl create repo data
+		pachctl create repo tep-data
 		pachctl create pipeline <<EOF
 		  pipeline:
-		    name: my-pipeline
+		    name: tep-my-pipeline
 		  input:
 		    pfs:
 		      glob: /*
-		      repo: data
+		      repo: tep-data
 		  transform:
 		    cmd: [ /bin/bash ]
 		    stdin:
-		      - "cp /pfs/data/* /pfs/out"
+		      - "cp /pfs/tep-data/* /pfs/out"
 		EOF
 		`).Run())
 	require.NoError(t, tu.BashCmd(`
-		EDITOR=cat pachctl edit pipeline my-pipeline -o yaml \
-		| match 'name: my-pipeline' \
-		| match 'repo: data' \
+		EDITOR=cat pachctl edit pipeline tep-my-pipeline -o yaml \
+		| match 'name: tep-my-pipeline' \
+		| match 'repo: tep-data' \
 		| match 'cmd:' \
-		| match 'cp /pfs/data/\* /pfs/out'
+		| match 'cp /pfs/tep-data/\* /pfs/out'
 		`).Run())
 }
 
