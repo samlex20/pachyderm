@@ -960,6 +960,8 @@ func (a *APIServer) receiveSpout(ctx context.Context, logger *taggedLogger) (ret
 						if err != nil {
 							return err
 						}
+						// sleeping a bit here makes the busy loop bug happen less ofter, but we still don't know why
+						time.Sleep(time.Second)
 						// and then we immediately close this reader of the pipe, so that the main reader can continue its standard behavior
 						err = openAndWait.Close()
 						if err != nil {
