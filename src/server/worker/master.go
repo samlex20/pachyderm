@@ -915,17 +915,10 @@ func (a *APIServer) egress(pachClient *client.APIClient, logger *taggedLogger, j
 
 func openAndWait() error {
 	// at the end of file, we open the pipe again, since this blocks until something is written to the pipe
-	fmt.Println("Blocking by opening")
 	openAndWait, err := os.Open("/pfs/out")
 	if err != nil {
 		return err
 	}
-	fmt.Println("Unblocked and closing uWu")
-
-	// time.Sleep(1 * time.Second)
-
-	// str, _ := ioutil.ReadAll(openAndWait)
-	// fmt.Println("header:", string(str))
 	// and then we immediately close this reader of the pipe, so that the main reader can continue its standard behavior
 	err = openAndWait.Close()
 	if err != nil {
@@ -960,7 +953,6 @@ func (a *APIServer) receiveSpout(ctx context.Context, logger *taggedLogger) (ret
 				// this loops through all the files in the tar that we've read from /pfs/out
 				for {
 					fileHeader, err := outTar.Next()
-					fmt.Println("fileheader error: ", err == io.EOF, err)
 					if err == io.EOF {
 						err = openAndWait()
 						if err != nil {
