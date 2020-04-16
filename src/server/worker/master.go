@@ -913,6 +913,27 @@ func (a *APIServer) egress(pachClient *client.APIClient, logger *taggedLogger, j
 	})
 }
 
+func openAndWait() error {
+	// at the end of file, we open the pipe again, since this blocks until something is written to the pipe
+	fmt.Println("Blocking by opening")
+	openAndWait, err := os.Open("/pfs/out")
+	if err != nil {
+		return err
+	}
+	fmt.Println("Unblocked and closing uWu")
+
+	// time.Sleep(1 * time.Second)
+
+	// str, _ := ioutil.ReadAll(openAndWait)
+	// fmt.Println("header:", string(str))
+	// and then we immediately close this reader of the pipe, so that the main reader can continue its standard behavior
+	err = openAndWait.Close()
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 func (a *APIServer) receiveSpout(ctx context.Context, logger *taggedLogger) (retErr1 error) {
 	return backoff.RetryNotify(func() error {
 		repo := a.pipelineInfo.Pipeline.Name
@@ -934,36 +955,14 @@ func (a *APIServer) receiveSpout(ctx context.Context, logger *taggedLogger) (ret
 				// create a new tar reader
 				outTar := tar.NewReader(out)
 
-				// start commit
-				commit, err := a.pachClient.PfsAPIClient.StartCommit(ctx, &pfs.StartCommitRequest{
-					Parent:     client.NewCommit(repo, ""),
-					Branch:     a.pipelineInfo.OutputBranch,
-					Provenance: []*pfs.CommitProvenance{client.NewCommitProvenance(ppsconsts.SpecRepo, repo, a.pipelineInfo.SpecCommit.ID)},
-				})
-				if err != nil {
-					return err
-				}
+				var commit *pfs.Commit
 
-				// finish the commit even if there was an issue
-				defer func() {
-					if err := a.pachClient.FinishCommit(repo, commit.ID); err != nil && retErr2 == nil {
-						// this lets us pass the error through if FinishCommit fails
-						retErr2 = err
-					}
-				}()
 				// this loops through all the files in the tar that we've read from /pfs/out
 				for {
 					fileHeader, err := outTar.Next()
+					fmt.Println("fileheader error: ", err == io.EOF, err)
 					if err == io.EOF {
-						// at the end of file, we open the pipe again, since this blocks until something is written to the pipe
-						openAndWait, err := os.Open("/pfs/out")
-						if err != nil {
-							return err
-						}
-						// sleeping a bit here makes the busy loop bug happen less ofter, but we still don't know why
-						time.Sleep(time.Second)
-						// and then we immediately close this reader of the pipe, so that the main reader can continue its standard behavior
-						err = openAndWait.Close()
+						err = openAndWait()
 						if err != nil {
 							return err
 						}
@@ -971,6 +970,25 @@ func (a *APIServer) receiveSpout(ctx context.Context, logger *taggedLogger) (ret
 					}
 					if err != nil {
 						return err
+					}
+
+					if commit == nil {
+						// start commit
+						commit, err = a.pachClient.PfsAPIClient.StartCommit(ctx, &pfs.StartCommitRequest{
+							Parent:     client.NewCommit(repo, ""),
+							Branch:     a.pipelineInfo.OutputBranch,
+							Provenance: []*pfs.CommitProvenance{client.NewCommitProvenance(ppsconsts.SpecRepo, repo, a.pipelineInfo.SpecCommit.ID)},
+						})
+						if err != nil {
+							return err
+						}
+						// finish the commit even if there was an issue
+						defer func() {
+							if err := a.pachClient.FinishCommit(repo, commit.ID); err != nil && retErr2 == nil {
+								// this lets us pass the error through if FinishCommit fails
+								retErr2 = err
+							}
+						}()
 					}
 					// put files into pachyderm
 					if a.pipelineInfo.Spout.Marker != "" && strings.HasPrefix(path.Clean(fileHeader.Name), a.pipelineInfo.Spout.Marker) {
