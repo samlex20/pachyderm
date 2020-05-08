@@ -3,6 +3,7 @@ package testing
 import (
 	"archive/tar"
 	"bytes"
+	"fmt"
 	"io"
 	"math/rand"
 	"sort"
@@ -118,4 +119,202 @@ func TestCompaction(t *testing.T) {
 		}
 		return eg.Wait()
 	}, config)
+}
+
+func TestListFileNSTwoCommits(t *testing.T) {
+	config := &serviceenv.PachdFullConfiguration{}
+	config.NewStorageLayer = true
+	t.Parallel()
+	err := testpachd.WithRealEnv(func(env *testpachd.RealEnv) error {
+		repo := "test"
+		require.NoError(t, env.PachClient.CreateRepo(repo))
+
+		numFiles := 5
+
+		commit1, err := env.PachClient.StartCommit(repo, "master")
+		require.NoError(t, err)
+
+		for i := 0; i < numFiles; i++ {
+			_, err = env.PachClient.PutFile(repo, commit1.ID, fmt.Sprintf("file%d", i), strings.NewReader("foo\n"))
+			require.NoError(t, err)
+		}
+
+		fileInfos, err := env.PachClient.ListFileNS(repo, "master", "")
+		require.NoError(t, err)
+		require.Equal(t, numFiles, len(fileInfos))
+
+		require.NoError(t, env.PachClient.FinishCommit(repo, commit1.ID))
+
+		commit2, err := env.PachClient.StartCommit(repo, "master")
+		require.NoError(t, err)
+
+		for i := 0; i < numFiles; i++ {
+			_, err = env.PachClient.PutFile(repo, commit2.ID, fmt.Sprintf("file2-%d", i), strings.NewReader("foo\n"))
+			require.NoError(t, err)
+		}
+
+		fileInfos, err = env.PachClient.ListFileNS(repo, commit2.ID, "")
+		require.NoError(t, err)
+		require.Equal(t, 2*numFiles, len(fileInfos))
+
+		require.NoError(t, env.PachClient.FinishCommit(repo, commit2.ID))
+
+		fileInfos, err = env.PachClient.ListFileNS(repo, commit1.ID, "")
+		require.NoError(t, err)
+		require.Equal(t, numFiles, len(fileInfos))
+
+		fileInfos, err = env.PachClient.ListFileNS(repo, commit2.ID, "")
+		require.NoError(t, err)
+		require.Equal(t, 2*numFiles, len(fileInfos))
+
+		return nil
+	}, config)
+	require.NoError(t, err)
+}
+
+func TestListFileNS(t *testing.T) {
+	config := &serviceenv.PachdFullConfiguration{}
+	config.NewStorageLayer = true
+	t.Parallel()
+	err := testpachd.WithRealEnv(func(env *testpachd.RealEnv) error {
+		repo := "test"
+		require.NoError(t, env.PachClient.CreateRepo(repo))
+
+		commit, err := env.PachClient.StartCommit(repo, "")
+		require.NoError(t, err)
+
+		fileContent1 := "foo\n"
+		_, err = env.PachClient.PutFile(repo, commit.ID, "dir/foo", strings.NewReader(fileContent1))
+		require.NoError(t, err)
+
+		fileContent2 := "bar\n"
+		_, err = env.PachClient.PutFile(repo, commit.ID, "dir/bar", strings.NewReader(fileContent2))
+		require.NoError(t, err)
+
+		fileInfos, err := env.PachClient.ListFileNS(repo, commit.ID, "dir")
+		require.NoError(t, err)
+		require.Equal(t, 2, len(fileInfos))
+		require.True(t, fileInfos[0].File.Path == "/dir/foo" && fileInfos[1].File.Path == "/dir/bar" || fileInfos[0].File.Path == "/dir/bar" && fileInfos[1].File.Path == "/dir/foo")
+
+		require.NoError(t, env.PachClient.FinishCommit(repo, commit.ID))
+
+		fileInfos, err = env.PachClient.ListFileNS(repo, commit.ID, "dir")
+		require.NoError(t, err)
+		require.Equal(t, 2, len(fileInfos))
+		require.True(t, fileInfos[0].File.Path == "/dir/foo" && fileInfos[1].File.Path == "/dir/bar" || fileInfos[0].File.Path == "/dir/bar" && fileInfos[1].File.Path == "/dir/foo")
+
+		return nil
+	}, config)
+	require.NoError(t, err)
+}
+
+func TestListFileNS2(t *testing.T) {
+	config := &serviceenv.PachdFullConfiguration{}
+	config.NewStorageLayer = true
+	t.Parallel()
+	err := testpachd.WithRealEnv(func(env *testpachd.RealEnv) error {
+		repo := "test"
+		require.NoError(t, env.PachClient.CreateRepo(repo))
+
+		fileContent := "foo\n"
+
+		_, err := env.PachClient.StartCommit(repo, "master")
+		require.NoError(t, err)
+		_, err = env.PachClient.PutFile(repo, "master", "dir/1", strings.NewReader(fileContent))
+		require.NoError(t, err)
+		_, err = env.PachClient.PutFile(repo, "master", "dir/2", strings.NewReader(fileContent))
+		require.NoError(t, err)
+
+		fileInfos, err := env.PachClient.ListFileNS(repo, "master", "dir")
+		require.NoError(t, err)
+		require.Equal(t, 2, len(fileInfos))
+
+		require.NoError(t, env.PachClient.FinishCommit(repo, "master"))
+
+		fileInfos, err = env.PachClient.ListFileNS(repo, "master", "dir")
+		require.NoError(t, err)
+		require.Equal(t, 2, len(fileInfos))
+
+		_, err = env.PachClient.StartCommit(repo, "master")
+		require.NoError(t, err)
+		_, err = env.PachClient.PutFile(repo, "master", "dir/3", strings.NewReader(fileContent))
+		require.NoError(t, err)
+		require.NoError(t, env.PachClient.FinishCommit(repo, "master"))
+
+		fileInfos, err = env.PachClient.ListFileNS(repo, "master", "dir")
+		require.NoError(t, err)
+		require.Equal(t, 3, len(fileInfos))
+
+		_, err = env.PachClient.StartCommit(repo, "master")
+		require.NoError(t, err)
+		err = env.PachClient.DeleteFile(repo, "master", "dir/2")
+		require.NoError(t, err)
+		require.NoError(t, env.PachClient.FinishCommit(repo, "master"))
+
+		fileInfos, err = env.PachClient.ListFileNS(repo, "master", "dir")
+		require.NoError(t, err)
+		require.Equal(t, 2, len(fileInfos))
+
+		return nil
+	}, config)
+	require.NoError(t, err)
+}
+
+func TestListFileNS3(t *testing.T) {
+	config := &serviceenv.PachdFullConfiguration{}
+	config.NewStorageLayer = true
+	t.Parallel()
+	err := testpachd.WithRealEnv(func(env *testpachd.RealEnv) error {
+		repo := "test"
+		require.NoError(t, env.PachClient.CreateRepo(repo))
+
+		fileContent := "foo\n"
+
+		_, err := env.PachClient.StartCommit(repo, "master")
+		require.NoError(t, err)
+		_, err = env.PachClient.PutFile(repo, "master", "dir/1", strings.NewReader(fileContent))
+		require.NoError(t, err)
+		_, err = env.PachClient.PutFile(repo, "master", "dir/2", strings.NewReader(fileContent))
+		require.NoError(t, err)
+		require.NoError(t, env.PachClient.FinishCommit(repo, "master"))
+
+		fileInfos, err := env.PachClient.ListFileNS(repo, "master", "dir")
+		require.NoError(t, err)
+		require.Equal(t, 2, len(fileInfos))
+
+		_, err = env.PachClient.StartCommit(repo, "master")
+		require.NoError(t, err)
+		_, err = env.PachClient.PutFile(repo, "master", "dir/3/foo", strings.NewReader(fileContent))
+		require.NoError(t, err)
+		_, err = env.PachClient.PutFile(repo, "master", "dir/3/bar", strings.NewReader(fileContent))
+		require.NoError(t, err)
+		require.NoError(t, env.PachClient.FinishCommit(repo, "master"))
+
+		fileInfos, err = env.PachClient.ListFileNS(repo, "master", "dir")
+		require.NoError(t, err)
+		require.Equal(t, 3, len(fileInfos))
+
+		_, err = env.PachClient.StartCommit(repo, "master")
+		require.NoError(t, err)
+		err = env.PachClient.DeleteFile(repo, "master", "dir/3/bar")
+		require.NoError(t, err)
+		require.NoError(t, env.PachClient.FinishCommit(repo, "master"))
+
+		fileInfos, err = env.PachClient.ListFileNS(repo, "master", "dir")
+		require.NoError(t, err)
+		require.Equal(t, 3, len(fileInfos))
+
+		_, err = env.PachClient.StartCommit(repo, "master")
+		require.NoError(t, err)
+		_, err = env.PachClient.PutFile(repo, "master", "file", strings.NewReader(fileContent))
+		require.NoError(t, err)
+		require.NoError(t, env.PachClient.FinishCommit(repo, "master"))
+
+		fileInfos, err = env.PachClient.ListFileNS(repo, "master", "/")
+		require.NoError(t, err)
+		require.Equal(t, 2, len(fileInfos))
+
+		return nil
+	}, config)
+	require.NoError(t, err)
 }
